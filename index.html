@@ -27,20 +27,23 @@
             border-radius: 8px;
         }
 
-        #chatbot {
+        #chatbotContent {
             width: 100%;
             height: 500px;
-            border: none;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-sizing: border-box;
         }
 
         @media (max-width: 600px) {
-            #chatbot {
+            #chatbotContent {
                 height: 400px;
             }
         }
 
         @media (max-width: 400px) {
-            #chatbot {
+            #chatbotContent {
                 height: 300px;
             }
         }
@@ -54,18 +57,24 @@
 <body>
     <div id="container">
         <h1>Chatbot</h1>
-        <div id="chatbotContainer">
+        <div id="chatbotContent">
             <!-- The chatbot content will be loaded here -->
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            var chatbotContainer = document.getElementById('chatbotContainer');
-            var iframe = document.createElement('iframe');
-            iframe.id = 'chatbot';
-            iframe.src = 'http://y909076y.beget.tech/chatbot/bot.php';
-            chatbotContainer.appendChild(iframe);
+            var chatbotContent = document.getElementById('chatbotContent');
+
+            fetch('http://y909076y.beget.tech/chatbot/bot.php')
+                .then(response => response.text())
+                .then(data => {
+                    chatbotContent.innerHTML = data;
+                })
+                .catch(error => {
+                    chatbotContent.innerHTML = 'Error loading chatbot content.';
+                    console.error('Error:', error);
+                });
         });
     </script>
 </body>
