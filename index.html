@@ -66,10 +66,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             var chatbotContent = document.getElementById('chatbotContent');
 
-            fetch('http://y909076y.beget.tech/chatbot/bot.php')
-                .then(response => response.text())
+            fetch('https://api.allorigins.win/get?url=' + encodeURIComponent('http://y909076y.beget.tech/chatbot/bot.php'))
+                .then(response => {
+                    if (response.ok) return response.json();
+                    throw new Error('Network response was not ok.');
+                })
                 .then(data => {
-                    chatbotContent.innerHTML = data;
+                    chatbotContent.innerHTML = data.contents;
                 })
                 .catch(error => {
                     chatbotContent.innerHTML = 'Error loading chatbot content.';
