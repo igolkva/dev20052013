@@ -1,60 +1,234 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chatbot Loader</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background-color: #f0f0f0;
-        }
-
-        #container {
-            width: 90%;
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 10px;
-            background: #fff;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
-        }
-
-        #chatbot {
-            width: 100%;
-            height: 500px;
-            border: none;
-        }
-
-        @media (max-width: 600px) {
-            #chatbot {
-                height: 400px;
-            }
-        }
-
-        @media (max-width: 400px) {
-            #chatbot {
-                height: 300px;
-            }
-        }
-
-        h1 {
-            text-align: center;
-            color: #333;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>7-day Weather (Open-Meteo) — Tallinn / Geneva / Nice</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;padding:0;margin:0}
+    body{margin:18px;background:#f7fafc;color:#0f172a}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    h1{font-size:1.25rem;margin:0}
+    .controls{display:flex;gap:8px;align-items:center}
+    input[type="search"]{padding:8px;border-radius:8px;border:1px solid #cbd5e1;width:220px}
+    button{padding:8px 10px;border-radius:8px;border:0;background:#2563eb;color:white;cursor:pointer}
+    .locations{display:flex;flex-wrap:wrap;gap:12px}
+    .card{background:white;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.06);padding:12px;min-width:220px;flex:1}
+    .card h2{margin:0 0 6px 0;font-size:1rem}
+    .forecast{display:flex;gap:8px;overflow:auto;padding-top:8px}
+    .day{min-width:92px;padding:8px;border-radius:8px;background:#eef2ff}
+    .meta{font-size:0.86rem;color:#475569;margin-top:6px}
+    footer{margin-top:18px;font-size:0.85rem;color:#475569}
+    small.note{display:block;margin-top:6px;color:#64748b}
+  </style>
 </head>
 <body>
-    <div id="container">
-        <h1>Chatbot</h1>
-        <iframe id="chatbot" src="http://y909076y.beget.tech/chatbot/chatbothtml.html"></iframe>
+  <header>
+    <div>
+      <h1>7-Day Weather — Tallinn · Geneva · Nice</h1>
+      <small class="note">Static page using <strong>Open-Meteo</strong> (no API key). Можно добавлять/удалять точки; настройки сохраняются в browser.</small>
     </div>
+    <div style="margin-left:auto" class="controls">
+      <input id="search" type="search" placeholder="Добавить город (напр. Vilnius, LT)" />
+      <button id="addBtn">Добавить</button>
+      <button id="refreshBtn" title="Обновить все">Обновить</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="locations" class="locations"></div>
+    <footer>
+      <div>Подключается к Open-Meteo (geocoding + forecast). Документация: open-meteo.com.</div>
+      <small>Сделано для GitHub Pages — файл: <code>index.html</code></small>
+    </footer>
+  </main>
+
+  <template id="cardTpl">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h2 class="locName">Location</h2>
+        <div>
+          <button class="removeBtn" style="background:#ef4444">Удалить</button>
+        </div>
+      </div>
+      <div class="meta locCoords">lat, lon</div>
+      <div class="forecast"></div>
+      <div class="meta updatedAt">Обновлено: —</div>
+    </div>
+  </template>
+
+  <script>
+    /* CONFIG */
+    const GEO_API = "https://geocoding-api.open-meteo.com/v1/search?name=";
+    const FORECAST_API = "https://api.open-meteo.com/v1/forecast";
+    const INITIAL = [
+      {name: "Tallinn, Estonia"},
+      {name: "Geneva, Switzerland"},
+      {name: "Nice, France"}
+    ];
+    const STORAGE_KEY = "om_locations_v1";
+
+    /* UTIL */
+    function el(sel, root = document) { return root.querySelector(sel); }
+    function fmtDateISO(dstr){
+      const d = new Date(dstr);
+      return d.toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"});
+    }
+    async function geocode(query){
+      const url = GEO_API + encodeURIComponent(query) + "&count=5&language=en&format=json";
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("Geocode failed");
+      const data = await res.json();
+      if(!data.results || data.results.length===0) throw new Error("Place not found");
+      // prefer exact match or first
+      return data.results[0];
+    }
+    async function fetchForecast(lat, lon){
+      // request daily 7 days: max/min temp, precipitation, weathercode
+      const params = new URLSearchParams({
+        latitude: lat,
+        longitude: lon,
+        daily: "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode",
+        timezone: "auto",
+        forecast_days: 7
+      });
+      const url = FORECAST_API + "?" + params.toString();
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("Forecast fetch failed");
+      return await res.json();
+    }
+
+    /* UI */
+    const locationsRoot = document.getElementById("locations");
+    const template = document.getElementById("cardTpl").content;
+
+    function saveLocations(list){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }
+    function loadLocations(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return INITIAL.slice();
+      try { return JSON.parse(raw); } catch(e) { return INITIAL.slice(); }
+    }
+
+    async function addLocationByName(name, save=true){
+      const container = document.createElement("div");
+      container.className = "cardWrap";
+      const node = document.importNode(template, true);
+      container.appendChild(node);
+      const card = container.querySelector(".card");
+      el(".locName", card).textContent = name;
+      el(".locCoords", card).textContent = "Ищем координаты...";
+      locationsRoot.appendChild(container);
+
+      try {
+        const g = await geocode(name);
+        const lat = g.latitude, lon = g.longitude;
+        el(".locCoords", card).textContent = `📍 ${g.name}${g.admin1 ? ", " + g.admin1 : ""}, ${g.country} — ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        el(".locName", card).textContent = `${g.name}${g.admin1 ? ", " + g.admin1 : ""} — ${g.country}`;
+
+        const data = await fetchForecast(lat, lon);
+        renderForecastIntoCard(card, data);
+        if (save) {
+          const list = loadLocations();
+          list.push({name: g.name, admin1: g.admin1, country: g.country, latitude: lat, longitude: lon});
+          saveLocations(list);
+        }
+
+        // remove handler
+        el(".removeBtn", card).addEventListener("click", () => {
+          container.remove();
+          // update storage: remove by coordinates
+          const list = loadLocations().filter(it => !(Math.abs((it.latitude||lat)-lat)<1e-6 && Math.abs((it.longitude||lon)-lon)<1e-6) && it.name !== g.name);
+          saveLocations(list);
+        });
+
+      } catch(err){
+        el(".locCoords", card).textContent = "Ошибка: " + (err.message || err);
+        el(".forecast", card).textContent = "";
+        console.error(err);
+      }
+    }
+
+    function renderForecastIntoCard(card, data){
+      // daily: time[], temperature_2m_max[], temperature_2m_min[], precipitation_sum[], weathercode[]
+      const daily = data.daily || {};
+      const times = daily.time || [];
+      const tmax = daily.temperature_2m_max || [];
+      const tmin = daily.temperature_2m_min || [];
+      const precip = daily.precipitation_sum || [];
+      const wc = daily.weathercode || [];
+
+      const froot = el(".forecast", card);
+      froot.innerHTML = "";
+      for(let i=0;i<times.length;i++){
+        const d = document.createElement("div");
+        d.className = "day";
+        d.innerHTML = `<div style="font-weight:600">${fmtDateISO(times[i])}</div>
+                       <div style="font-size:0.95rem">${Math.round(tmax[i])}° / ${Math.round(tmin[i])}°</div>
+                       <div style="font-size:0.85rem">prec: ${precip[i] !== undefined ? precip[i].toFixed(1) + " mm" : "-"}</div>
+                       <div style="font-size:0.8rem;color:#334155">code:${wc[i] ?? "-"}</div>`;
+        froot.appendChild(d);
+      }
+      el(".updatedAt", card).textContent = "Обновлено: " + new Date().toLocaleString();
+    }
+
+    async function rebuildUI(){
+      locationsRoot.innerHTML = "";
+      const list = loadLocations();
+      // if items already have lat/lon, use them, else geocode
+      for(const it of list){
+        if(it.latitude && it.longitude){
+          // create card and fetch forecast directly
+          const container = document.createElement("div");
+          const node = document.importNode(template, true);
+          container.appendChild(node);
+          const card = container.querySelector(".card");
+          el(".locName", card).textContent = `${it.name}${it.admin1 ? ", " + it.admin1 : ""} — ${it.country || ""}`;
+          el(".locCoords", card).textContent = `📍 ${it.latitude.toFixed(4)}, ${it.longitude.toFixed(4)}`;
+          locationsRoot.appendChild(container);
+
+          // attach remove handler (remove by name+coords)
+          el(".removeBtn", card).addEventListener("click", () => {
+            container.remove();
+            const newList = loadLocations().filter(x => !(x.latitude === it.latitude && x.longitude === it.longitude && x.name === it.name));
+            saveLocations(newList);
+          });
+
+          try {
+            const data = await fetchForecast(it.latitude, it.longitude);
+            renderForecastIntoCard(card, data);
+          } catch(e){
+            el(".locCoords", card).textContent = "Ошибка получения прогноза";
+            console.error(e);
+          }
+
+        } else {
+          // fallback: add by name -> geocode inside addLocationByName (and save updated coords)
+          await addLocationByName(it.name, true);
+        }
+      }
+    }
+
+    // handlers
+    document.getElementById("addBtn").addEventListener("click", async () => {
+      const q = document.getElementById("search").value.trim();
+      if(!q) { alert("Введите название города или местоположение"); return; }
+      await addLocationByName(q, true);
+      document.getElementById("search").value = "";
+    });
+    document.getElementById("refreshBtn").addEventListener("click", () => {
+      // simple: clear UI and reload from storage (will refetch)
+      rebuildUI();
+    });
+
+    // init: if storage empty, seed with INITIAL (will be saved)
+    (async function init(){
+      if(!localStorage.getItem(STORAGE_KEY)){
+        saveLocations(INITIAL.slice());
+      }
+      await rebuildUI();
+    })();
+  </script>
 </body>
 </html>
